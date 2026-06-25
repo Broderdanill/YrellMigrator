@@ -1,0 +1,19 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: Yrell Migrator
+Bundle-SymbolicName: se.yrell.migrator;singleton:=true
+Bundle-Version: 0.85.0
+Bundle-Activator: se.yrell.migrator.Activator
+Bundle-Vendor: Yrell
+Bundle-RequiredExecutionEnvironment: JavaSE-17
+Bundle-ActivationPolicy: lazy
+Bundle-ClassPath: .
+Require-Bundle: org.eclipse.core.runtime,org.eclipse.core.jobs,org.eclip
+ se.ui,org.eclipse.jface,org.eclipse.swt,com.bmc.arsys.studio.api,com.bm
+ c.arsys.studio.model,com.bmc.arsys.studio.commonui,com.bmc.arsys.studio
+ .ui
+Import-Package: org.osgi.framework
+Export-Package: se.yrell.migrator.core,se.yrell.migrator.bmc
+ ,se.yrell.migrator.ui.actions,se.yrell.migrator.ui.views
+Created-By: 21.0.10 (Debian)
+

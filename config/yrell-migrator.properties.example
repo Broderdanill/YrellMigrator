@@ -1,0 +1,73 @@
+# Optional Yrell Migrator shared configuration.
+# Place a copy named yrell-migrator.properties next to devstudio.ini to override Window -> Preferences settings.
+# Normal recommended setup is to configure this in Developer Studio:
+#   Window -> Preferences -> Yrell Migrator
+
+compare.useBmcDefaultIgnores=false
+compare.forceReloadObjects=true
+compare.deepCompareForms=true
+compare.cacheObjects=true
+compare.fingerprintFallback=true
+compare.objectTimeoutSeconds=180
+compare.maxSummaryItems=10
+search.maxResults=1000
+view.showEqualByDefault=false
+metadata.enumerationTimeoutSeconds=60
+metadata.aggressiveEnumeration=false
+
+# Sync object-name filters. Comma- or semicolon-separated.
+# Wildcards: * or % = any text, ? or _ = one character.
+# Empty include means all names. Exclude wins over include.
+# Default is intentionally narrow for faster testing.
+sync.include.name.patterns=ARS:*
+sync.exclude.name.patterns=
+
+# Cache customization types read during Sync. Valid values: Base, Custom, Overlay.
+# Default keeps custom work and overlays while skipping BMC base definitions.
+# Non-customizable catalog/data objects such as Group, Role, Report and Template are always included.
+sync.cache.customization.types=Custom,Overlay
+
+# metadata.aggressiveEnumeration=true allows slower fallback providers such as getList(type,true).
+# Keep it false unless a specific object type is missing from metadata sync.
+
+# Comma- or semicolon-separated ignore lists.
+ignore.mask.ids=
+ignore.difference.name.contains=Last Update,Last Changed,Modified Date,Timestamp
+ignore.fingerprint.member.name.contains=store,changeListener,loadedActiveLinks,deletedFields,deletedViews,dirty,state
+
+# Force Sync to rebuild definition snapshots even if metadata is unchanged.
+# Useful after changing ignore settings or upgrading semantic snapshot logic.
+sync.forceRefreshDefinitions=false
+# Reuse existing definition snapshots when object metadata indicates no relevant change.
+sync.incrementalDefinitions=true
+# Retry rows that previously failed during deep snapshot generation. Normally false to keep broad Sync stable.
+sync.retryErrorSnapshots=false
+
+# Binary/support objects such as Images are metadata-only by default because some BMC/Developer Studio versions can hang when loading binary image content.
+# Set to true only when you explicitly need binary/support object deep snapshots and have tested it in your environment.
+sync.deepCacheBinaryObjects=false
+
+# Deep-cache expensive reference/container definitions such as Web Services, Applications, Flashboards, Data Visualization definitions, Packing Lists, Reports and Templates. Default false.
+sync.deepCacheExpensiveObjects=false
+
+
+# Generic data-object migration mappings.
+# These are used only by the normal object migration buttons when the selected object type has a mapping.
+# A mapped object is copied as an AR entry using object name as the natural key. Existing target rows with that key are deleted first.
+# Built-in mappings exist for Group, Role, Message, Report and Template, but real form/field names can vary between versions.
+# Override or disable mappings here when needed.
+#
+# Example custom mapping:
+# dataObject.types=My Config
+# dataObject.myconfig.form=MY:Config
+# dataObject.myconfig.keyField=Name
+# dataObject.myconfig.excludeFieldIds=1,3,5,6,15
+# Optional allow-list. Empty means copy all source fields except excluded system fields.
+# dataObject.myconfig.copyFieldIds=
+# dataObject.myconfig.allowMultipleSourceRows=false
+# dataObject.myconfig.maxMatches=25
+#
+# Disable a built-in mapping:
+# Built-ins can be disabled or overridden. Role uses the AR form Roles by default.
+# dataObject.group.enabled=false
+# dataObject.group.copyFieldIds=105,106,107

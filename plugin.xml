@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.4"?>
+<plugin>
+   <extension point="com.bmc.arsys.studio.commonui.genericaction">
+      <genericActionProvider
+            class="se.yrell.migrator.ui.actions.CompareWithEnvironmentActionProvider">
+      </genericActionProvider>
+   </extension>
+
+   <extension point="org.eclipse.ui.views">
+      <category
+            id="se.yrell.migrator.category"
+            name="Yrell Migrator">
+      </category>
+      <view
+            id="se.yrell.migrator.views.explorer"
+            name="Yrell Migrator"
+            category="se.yrell.migrator.category"
+            class="se.yrell.migrator.ui.views.DifferencesView"
+            restorable="true">
+      </view>
+   </extension>
+
+   <extension point="org.eclipse.core.runtime.preferences">
+      <initializer
+            class="se.yrell.migrator.ui.preferences.ComparePreferenceInitializer">
+      </initializer>
+   </extension>
+
+   <extension point="org.eclipse.ui.startup">
+      <startup
+            class="se.yrell.migrator.StartupDiagnostics">
+      </startup>
+   </extension>
+
+   <extension point="org.eclipse.ui.commands">
+      <command
+            id="se.yrell.migrator.commands.openExplorer"
+            name="Open Yrell Migrator">
+      </command>
+      <command
+            id="se.yrell.migrator.commands.openDiagnostics"
+            name="Yrell Migrator Diagnostics">
+      </command>
+   </extension>
+
+   <extension point="org.eclipse.ui.handlers">
+      <handler
+            commandId="se.yrell.migrator.commands.openExplorer"
+            class="se.yrell.migrator.ui.handlers.OpenDifferencesViewHandler">
+      </handler>
+      <handler
+            commandId="se.yrell.migrator.commands.openDiagnostics"
+            class="se.yrell.migrator.ui.handlers.OpenDiagnosticsHandler">
+      </handler>
+   </extension>
+
+   <extension point="org.eclipse.ui.menus">
+      <menuContribution
+            locationURI="menu:org.eclipse.ui.main.menu?after=additions">
+         <menu
+               id="se.yrell.migrator.mainMenu"
+               label="Yrell Migrator">
+            <command
+                  commandId="se.yrell.migrator.commands.openExplorer"
+                  label="Open Yrell Migrator"
+                  style="push">
+            </command>
+            <command
+                  commandId="se.yrell.migrator.commands.openDiagnostics"
+                  label="Diagnostics..."
+                  style="push">
+            </command>
+         </menu>
+      </menuContribution>
+   </extension>
+</plugin>
