@@ -2,7 +2,7 @@ Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
 Bundle-Name: Yrell Migrator
 Bundle-SymbolicName: se.yrell.migrator;singleton:=true
-Bundle-Version: 0.85.0
+Bundle-Version: 0.86.0
 Bundle-Activator: se.yrell.migrator.Activator
 Bundle-Vendor: Yrell
 Bundle-RequiredExecutionEnvironment: JavaSE-17

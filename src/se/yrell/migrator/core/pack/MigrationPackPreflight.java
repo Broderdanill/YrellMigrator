@@ -130,7 +130,8 @@ public final class MigrationPackPreflight {
         if (!item.hasEmbeddedPayload()) {
             error(label + " — no embedded payload. Re-add/export this row with v0.80.0 or later.");
         } else if (item.isFormData() || MigrationPackPayloadService.PAYLOAD_ENTRY_DATA.equals(item.getPayloadType())
-                || MigrationPackPayloadService.PAYLOAD_ENTRY_DATA_XML.equals(item.getPayloadType())) {
+                || MigrationPackPayloadService.PAYLOAD_ENTRY_DATA_XML.equals(item.getPayloadType())
+                || MigrationPackPayloadService.PAYLOAD_ENTRY_DATA_CSV.equals(item.getPayloadType())) {
             embeddedDataItems++;
             embeddedRows += item.getEmbeddedRowCount();
             if (item.getEmbeddedRowCount() == 0) {

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="0.85.0"
+VERSION="0.86.0"
 PLUGIN_ID="se.yrell.migrator"
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEVSTUDIO_HOME="${DEVSTUDIO_HOME:-}"

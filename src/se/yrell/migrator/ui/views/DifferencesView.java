@@ -129,6 +129,7 @@ import se.yrell.migrator.core.pack.MigrationPackItem;
 import se.yrell.migrator.core.pack.MigrationPackStorage;
 import se.yrell.migrator.core.pack.MigrationPackPayloadService;
 import se.yrell.migrator.core.pack.MigrationPackPreflight;
+import se.yrell.migrator.core.backup.MigrationBackupService;
 import se.yrell.migrator.ui.util.UiStrings;
 import se.yrell.migrator.ui.util.ProgressMessages;
 import se.yrell.migrator.ui.dialogs.DifferenceDetailsDialog;
@@ -223,6 +224,7 @@ public final class DifferencesView extends ViewPart {
     private final MigrationPlanner migrationPlanner = new MigrationPlanner();
     private final MigrationPackStorage migrationPackStorage = new MigrationPackStorage();
     private final MigrationPackPayloadService migrationPackPayloadService = new MigrationPackPayloadService();
+    private final MigrationBackupService migrationBackupService = new MigrationBackupService();
     private MigrationPack migrationPack = new MigrationPack();
     private org.eclipse.swt.widgets.TabFolder mainTabs;
     private org.eclipse.swt.widgets.TabItem migrationPackTabItem;
@@ -452,7 +454,7 @@ public final class DifferencesView extends ViewPart {
 
         Composite buttons = new Composite(root, SWT.NONE);
         buttons.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
-        GridLayout buttonLayout = new GridLayout(14, false);
+        GridLayout buttonLayout = new GridLayout(15, false);
         buttonLayout.marginWidth = 0;
         buttonLayout.marginHeight = 0;
         buttons.setLayout(buttonLayout);
@@ -557,7 +559,7 @@ public final class DifferencesView extends ViewPart {
         Button export = new Button(buttons, SWT.PUSH);
         export.setText("Export...");
         export.setImage(sharedImage(ISharedImages.IMG_ETOOL_SAVEAS_EDIT));
-        export.setToolTipText("Export this local migration pack to a portable .ympack file.");
+        export.setToolTipText("Export this local migration pack to a portable ZIP file.");
         export.addSelectionListener(new SelectionAdapter() {
             @Override
             public void widgetSelected(SelectionEvent event) {
@@ -568,11 +570,22 @@ public final class DifferencesView extends ViewPart {
         Button imp = new Button(buttons, SWT.PUSH);
         imp.setText("Import...");
         imp.setImage(sharedImage(ISharedImages.IMG_OBJ_FOLDER));
-        imp.setToolTipText("Import a .ympack or legacy .hlxpack file and replace the current local pack.");
+        imp.setToolTipText("Import a Migration Pack ZIP, .ympack or legacy .hlxpack file and replace the current local pack.");
         imp.addSelectionListener(new SelectionAdapter() {
             @Override
             public void widgetSelected(SelectionEvent event) {
                 importMigrationPack();
+            }
+        });
+
+        Button restoreBackup = new Button(buttons, SWT.PUSH);
+        restoreBackup.setText("Restore backup...");
+        restoreBackup.setImage(sharedImage(ISharedImages.IMG_TOOL_UNDO));
+        restoreBackup.setToolTipText("Restore a .ymbackup file created before a migration run.");
+        restoreBackup.addSelectionListener(new SelectionAdapter() {
+            @Override
+            public void widgetSelected(SelectionEvent event) {
+                restoreMigrationBackup();
             }
         });
 
@@ -1024,15 +1037,15 @@ public final class DifferencesView extends ViewPart {
         }
         FileDialog dialog = new FileDialog(getSite().getShell(), SWT.SAVE);
         dialog.setText("Export Migration Pack");
-        dialog.setFilterExtensions(new String[] { "*.ympack", "*.hlxpack", "*.*" });
-        dialog.setFileName(safeFileName(migrationPack.getName()) + ".ympack");
+        dialog.setFilterExtensions(new String[] { "*.zip", "*.ympack", "*.hlxpack", "*.*" });
+        dialog.setFileName(safeFileName(migrationPack.getName()) + ".zip");
         String path = dialog.open();
         if (path == null) {
             return;
         }
         String lowerPath = path.toLowerCase(Locale.ENGLISH);
-        if (!lowerPath.endsWith(".ympack") && !lowerPath.endsWith(".hlxpack")) {
-            path = path + ".ympack";
+        if (!lowerPath.endsWith(".zip") && !lowerPath.endsWith(".ympack") && !lowerPath.endsWith(".hlxpack")) {
+            path = path + ".zip";
         }
         try {
             migrationPackStorage.save(migrationPack, new File(path));
@@ -1047,7 +1060,7 @@ public final class DifferencesView extends ViewPart {
     private void importMigrationPack() {
         FileDialog dialog = new FileDialog(getSite().getShell(), SWT.OPEN);
         dialog.setText("Import Migration Pack");
-        dialog.setFilterExtensions(new String[] { "*.ympack", "*.hlxpack", "*.*" });
+        dialog.setFilterExtensions(new String[] { "*.zip", "*.ympack", "*.hlxpack", "*.*" });
         String path = dialog.open();
         if (path == null) {
             return;
@@ -1063,6 +1076,77 @@ public final class DifferencesView extends ViewPart {
             Activator.logError("Could not import Migration Pack.", ex);
             MessageDialog.openError(getSite().getShell(), "Migration Pack", "Could not import Migration Pack: " + safeMessage(ex));
         }
+    }
+
+    private File chooseMigrationBackupFile(String scopeName) {
+        FileDialog dialog = new FileDialog(getSite().getShell(), SWT.SAVE);
+        dialog.setText("Create Migration Backup");
+        dialog.setFilterExtensions(new String[] { "*.ymbackup", "*.zip", "*.*" });
+        dialog.setFileName(safeFileName("backup-" + (scopeName == null ? migrationPack.getName() : scopeName)) + ".ymbackup");
+        String path = dialog.open();
+        if (path == null || path.length() == 0) {
+            return null;
+        }
+        String lower = path.toLowerCase(Locale.ENGLISH);
+        if (!lower.endsWith(".ymbackup") && !lower.endsWith(".zip")) {
+            path = path + ".ymbackup";
+        }
+        return new File(path);
+    }
+
+    private void restoreMigrationBackup() {
+        FileDialog dialog = new FileDialog(getSite().getShell(), SWT.OPEN);
+        dialog.setText("Restore Migration Backup");
+        dialog.setFilterExtensions(new String[] { "*.ymbackup", "*.zip", "*.*" });
+        String path = dialog.open();
+        if (path == null || path.length() == 0) {
+            return;
+        }
+        if (!MessageDialog.openQuestion(getSite().getShell(), "Restore Migration Backup",
+                "Restore this backup into the connected target environment(s)?\n\n"
+                + "Existing before-state definitions/data will be imported back. Objects or rows that did not exist before the backed-up migration will be deleted where the backup contains a delete instruction.\n\n"
+                + path)) {
+            return;
+        }
+        final File file = new File(path);
+        setBusy(true);
+        updateOverviewStatus("Restoring migration backup...", ISharedImages.IMG_ELCL_SYNCED);
+        Job job = new Job("Restore Yrell Migrator backup") {
+            @Override
+            protected IStatus run(IProgressMonitor monitor) {
+                final String report;
+                try {
+                    MigrationBackupService.RestoreResult result = migrationBackupService.restore(file, stores, monitor);
+                    report = result.report();
+                } catch (Throwable ex) {
+                    Activator.logError("Could not restore migration backup.", ex);
+                    final String message = safeMessage(ex);
+                    if (viewer != null && viewer.getControl() != null && !viewer.getControl().isDisposed()) {
+                        viewer.getControl().getDisplay().asyncExec(new Runnable() {
+                            public void run() {
+                                setBusy(false);
+                                MessageDialog.openError(getSite().getShell(), "Restore Migration Backup", "Could not restore backup: " + message);
+                            }
+                        });
+                    }
+                    return Status.CANCEL_STATUS;
+                }
+                lastMigrationPackRunReport = report;
+                if (viewer != null && viewer.getControl() != null && !viewer.getControl().isDisposed()) {
+                    viewer.getControl().getDisplay().asyncExec(new Runnable() {
+                        public void run() {
+                            setBusy(false);
+                            new MigrationReportDialog(getSite().getShell(), "Restore Migration Backup", "Backup restore finished.", report, report.indexOf("FAILED") >= 0).open();
+                            appendActivity("Migration backup restored from " + file.getAbsolutePath() + ".");
+                            reloadOverviewFromCache(false);
+                        }
+                    });
+                }
+                return Status.OK_STATUS;
+            }
+        };
+        job.setUser(true);
+        job.schedule();
     }
 
     private void runMigrationPack() {
@@ -1094,13 +1178,18 @@ public final class DifferencesView extends ViewPart {
                 + "Preflight: " + preflight.summary() + "\n\n"
                 + "The pack contains embedded definitions/data. Only each row's target environment must be connected.\n"
                 + "Rows are processed in the recommended execution order, regardless of visual order.";
-        if (!MessageDialog.openQuestion(getSite().getShell(), "Run Migration Pack", message)) {
+        if (!MessageDialog.openQuestion(getSite().getShell(), "Run Migration Pack", message + "\n\nA before-state backup will be created before any target changes are written.")) {
             return;
         }
-        runMigrationPackJob(new ArrayList<MigrationPackItem>(orderedItems), runPack.getName());
+        final File backupFile = chooseMigrationBackupFile(runPack.getName());
+        if (backupFile == null) {
+            appendActivity("Migration Pack run cancelled because no backup file was selected.");
+            return;
+        }
+        runMigrationPackJob(new ArrayList<MigrationPackItem>(orderedItems), runPack.getName(), backupFile);
     }
 
-    private void runMigrationPackJob(final List<MigrationPackItem> packItems, final String runName) {
+    private void runMigrationPackJob(final List<MigrationPackItem> packItems, final String runName, final File backupFile) {
         final long started = System.currentTimeMillis();
         setBusy(true);
         updateOverviewStatus("Running Migration Pack...", ISharedImages.IMG_ELCL_SYNCED);
@@ -1111,8 +1200,13 @@ public final class DifferencesView extends ViewPart {
                 final List<MigrationResult> objectResults = new ArrayList<MigrationResult>();
                 final StringBuilder dataReport = new StringBuilder();
                 final StringBuilder unresolved = new StringBuilder();
-                monitor.beginTask("Running Migration Pack", Math.max(1, packItems.size() * 3));
+                monitor.beginTask("Running Migration Pack", Math.max(1, packItems.size() * 4));
+                String backupReport = "";
                 try {
+                    monitor.subTask("Creating before-state backup");
+                    MigrationBackupService.BackupResult backup = migrationBackupService.createForPack(runName, packItems, stores, backupFile, monitor);
+                    backupReport = "Before-state backup created: " + backupFile.getAbsolutePath() + "\n" + backup.summary() + "\n";
+                    appendActivity("Before-state backup created: " + backupFile.getAbsolutePath() + ". " + backup.summary());
                     runMigrationPackDefinitions(packItems, MigrationDirection.SOURCE_TO_TARGET, objectResults, unresolved, monitor);
                     runMigrationPackDefinitions(packItems, MigrationDirection.TARGET_TO_SOURCE, objectResults, unresolved, monitor);
                     runMigrationPackData(packItems, dataReport, unresolved, monitor);
@@ -1123,7 +1217,7 @@ public final class DifferencesView extends ViewPart {
                     monitor.done();
                 }
                 final long finished = System.currentTimeMillis();
-                final String finalReport = buildMigrationPackRunReport(packItems, runName, objectResults, dataReport.toString(), unresolved.toString(), started, finished);
+                final String finalReport = backupReport + "\n" + buildMigrationPackRunReport(packItems, runName, objectResults, dataReport.toString(), unresolved.toString(), started, finished);
                 lastMigrationPackRunReport = finalReport;
                 if (viewer != null && viewer.getControl() != null && !viewer.getControl().isDisposed()) {
                     viewer.getControl().getDisplay().asyncExec(new Runnable() {
@@ -3527,6 +3621,11 @@ public final class DifferencesView extends ViewPart {
     }
 
     private void runMigrationJob(final MigrationPlan plan, final boolean includeContainerContent) {
+        final File backupFile = chooseMigrationBackupFile("object-migration");
+        if (backupFile == null) {
+            appendActivity("Object migration cancelled because no backup file was selected.");
+            return;
+        }
         final List<CompareResult> candidates = plan == null ? new ArrayList<CompareResult>() : plan.getOrderedRows();
         final MigrationDirection direction = plan == null ? MigrationDirection.SOURCE_TO_TARGET : plan.getDirection();
         final ComparisonSession baseSession = session;
@@ -3539,6 +3638,25 @@ public final class DifferencesView extends ViewPart {
         Job job = new Job("Migrate AR objects " + direction.getLabel()) {
             @Override
             protected IStatus run(IProgressMonitor monitor) {
+                try {
+                    MigrationBackupService.BackupResult backup = migrationBackupService.createForMigrationPlan(plan, includeContainerContent, backupFile, monitor);
+                    final String backupMessage = "Before-state backup created: " + backupFile.getAbsolutePath() + ". " + backup.summary();
+                    if (viewer != null && viewer.getControl() != null && !viewer.getControl().isDisposed()) {
+                        viewer.getControl().getDisplay().asyncExec(new Runnable() { public void run() { appendActivity(backupMessage); } });
+                    }
+                } catch (final Throwable backupError) {
+                    Activator.logError("Could not create before-state backup; migration aborted.", backupError);
+                    if (viewer != null && viewer.getControl() != null && !viewer.getControl().isDisposed()) {
+                        viewer.getControl().getDisplay().asyncExec(new Runnable() {
+                            public void run() {
+                                setBusy(false);
+                                MessageDialog.openError(getSite().getShell(), "Migration Backup", "Could not create backup. Migration was not run:\n" + safeMessage(backupError));
+                            }
+                        });
+                    }
+                    return Status.CANCEL_STATUS;
+                }
+
                 ObjectMigrationExecutor executor = new ObjectMigrationExecutor(modelAdapter, workflowMigrator,
                         catalogDataMigrator, supportFileMigrator, containerContentMigrator);
                 ObjectMigrationExecutor.Execution execution = executor.execute(plan, includeContainerContent, monitor,

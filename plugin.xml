@@ -21,6 +21,15 @@
       </view>
    </extension>
 
+
+   <extension point="org.eclipse.ui.perspectives">
+      <perspective
+            id="se.yrell.migrator.perspective"
+            name="Yrell Migrator"
+            class="se.yrell.migrator.ui.perspectives.YrellMigratorPerspective">
+      </perspective>
+   </extension>
+
    <extension point="org.eclipse.core.runtime.preferences">
       <initializer
             class="se.yrell.migrator.ui.preferences.ComparePreferenceInitializer">

@@ -40,6 +40,7 @@ src/se/yrell/migrator/core/MigrationResult.java
 src/se/yrell/migrator/core/MigrationVerifier.java
 src/se/yrell/migrator/core/ObjectMigrationExecutor.java
 src/se/yrell/migrator/core/PermissionDiffNormalizer.java
+src/se/yrell/migrator/core/backup/MigrationBackupService.java
 src/se/yrell/migrator/core/pack/MigrationPack.java
 src/se/yrell/migrator/core/pack/MigrationPackItem.java
 src/se/yrell/migrator/core/pack/MigrationPackPayloadService.java
@@ -61,6 +62,7 @@ src/se/yrell/migrator/ui/dialogs/MigrationReportDialog.java
 src/se/yrell/migrator/ui/handlers/OpenCompareExplorerViewHandler.java
 src/se/yrell/migrator/ui/handlers/OpenDiagnosticsHandler.java
 src/se/yrell/migrator/ui/handlers/OpenDifferencesViewHandler.java
+src/se/yrell/migrator/ui/perspectives/YrellMigratorPerspective.java
 src/se/yrell/migrator/ui/preferences/ComparePreferenceInitializer.java
 src/se/yrell/migrator/ui/preferences/ComparePreferencePage.java
 src/se/yrell/migrator/ui/util/ProgressMessages.java

@@ -61,6 +61,7 @@ public final class MigrationPackPayloadService {
     public static final String PAYLOAD_AR_DEFINITION = "arDefinition";
     public static final String PAYLOAD_ENTRY_DATA = "entryData";
     public static final String PAYLOAD_ENTRY_DATA_XML = "entryDataXml";
+    public static final String PAYLOAD_ENTRY_DATA_CSV = "entryDataCsv";
 
     private static final int PAGE_SIZE = 100;
 
@@ -168,7 +169,7 @@ public final class MigrationPackPayloadService {
                 return MigrationResult.success(identity, false, "Imported embedded AR definition for "
                         + item.getObjectType() + " " + item.getObjectName() + " into " + targetStore.getName() + ".");
             }
-            if (PAYLOAD_ENTRY_DATA.equals(item.getPayloadType()) || PAYLOAD_ENTRY_DATA_XML.equals(item.getPayloadType())) {
+            if (isEntryPayloadType(item.getPayloadType())) {
                 EmbeddedDataResult dataResult = importEntries(item, targetStore, monitor);
                 if (dataResult.failed > 0) {
                     return MigrationResult.warning(identity, dataResult.summary());
@@ -188,7 +189,7 @@ public final class MigrationPackPayloadService {
         if (!(targetStore instanceof IEntryStore) || !targetStore.isConnected()) {
             throw new ModelException("Target environment does not support entry access or is not connected.");
         }
-        if (!PAYLOAD_ENTRY_DATA.equals(item.getPayloadType()) && !PAYLOAD_ENTRY_DATA_XML.equals(item.getPayloadType())) {
+        if (!isEntryPayloadType(item.getPayloadType())) {
             throw new ModelException("The pack item does not contain embedded entry data.");
         }
         IProgressMonitor safeMonitor = monitor == null ? new NullProgressMonitor() : monitor;
@@ -225,6 +226,51 @@ public final class MigrationPackPayloadService {
         }
         safeMonitor.done();
         return result;
+    }
+
+    public boolean isEntryPayloadType(String payloadType) {
+        return PAYLOAD_ENTRY_DATA.equals(payloadType) || PAYLOAD_ENTRY_DATA_XML.equals(payloadType)
+                || PAYLOAD_ENTRY_DATA_CSV.equals(payloadType);
+    }
+
+    public List<Entry> getEmbeddedEntries(MigrationPackItem item) throws Exception {
+        return deserializeEntries(item);
+    }
+
+    public String serializeEntriesCsvBase64(List<Entry> entries) throws Exception {
+        return compressToBase64(serializeEntriesCsvBytes(entries));
+    }
+
+    public String encodeRawPayloadFile(String payloadType, byte[] bytes) throws Exception {
+        if (payloadType == null || payloadType.length() == 0) {
+            throw new ModelException("Cannot import a pack payload without a payload type.");
+        }
+        return compressToBase64(bytes == null ? new byte[0] : bytes);
+    }
+
+    public String openPayloadType(MigrationPackItem item) {
+        if (item == null) return "";
+        if (PAYLOAD_AR_DEFINITION.equals(item.getPayloadType())) return PAYLOAD_AR_DEFINITION;
+        if (isEntryPayloadType(item.getPayloadType())) return PAYLOAD_ENTRY_DATA_CSV;
+        return item.getPayloadType();
+    }
+
+    public String openPayloadExtension(MigrationPackItem item) {
+        if (item == null) return ".bin";
+        if (PAYLOAD_AR_DEFINITION.equals(item.getPayloadType())) return ".def";
+        if (isEntryPayloadType(item.getPayloadType())) return ".csv";
+        return ".bin";
+    }
+
+    public byte[] toOpenPayloadBytes(MigrationPackItem item) throws Exception {
+        if (item == null || item.getPayloadBase64().length() == 0) return new byte[0];
+        if (PAYLOAD_AR_DEFINITION.equals(item.getPayloadType())) {
+            return decompressFromBase64(item.getPayloadBase64());
+        }
+        if (isEntryPayloadType(item.getPayloadType())) {
+            return serializeEntriesCsvBytes(deserializeEntries(item));
+        }
+        return decompressFromBase64(item.getPayloadBase64());
     }
 
     private void captureCatalogDefinitionAsEntries(MigrationPackItem item, CompareResult row, IStore sourceStore,
@@ -501,7 +547,153 @@ public final class MigrationPackPayloadService {
         if (item != null && PAYLOAD_ENTRY_DATA_XML.equals(item.getPayloadType())) {
             return deserializeEntriesXml(item.getPayloadBase64());
         }
+        if (item != null && PAYLOAD_ENTRY_DATA_CSV.equals(item.getPayloadType())) {
+            return deserializeEntriesCsv(item.getPayloadBase64());
+        }
         return deserializeEntriesJava(item == null ? null : item.getPayloadBase64());
+    }
+
+    private byte[] serializeEntriesCsvBytes(List<Entry> entries) throws Exception {
+        StringBuilder csv = new StringBuilder();
+        csv.append("entryId,fieldId,type,typeName,alias,encoding,fileName,value\n");
+        if (entries != null) {
+            for (Entry entry : entries) {
+                String entryId = safeEntryId(entry);
+                if (entry == null || entry.isEmpty()) {
+                    csv.append(csv(entryId)).append(",,,,,,,\n");
+                    continue;
+                }
+                for (Map.Entry<Integer, Value> pair : entry.entrySet()) {
+                    if (pair == null || pair.getKey() == null) continue;
+                    CsvValue cv = valueToCsv(pair.getValue());
+                    csv.append(csv(entryId)).append(',')
+                       .append(csv(String.valueOf(pair.getKey().intValue()))).append(',')
+                       .append(csv(cv.type)).append(',')
+                       .append(csv(cv.typeName)).append(',')
+                       .append(csv(cv.alias)).append(',')
+                       .append(csv(cv.encoding)).append(',')
+                       .append(csv(cv.fileName)).append(',')
+                       .append(csv(cv.value)).append('\n');
+                }
+            }
+        }
+        return csv.toString().getBytes("UTF-8");
+    }
+
+    private CsvValue valueToCsv(Value value) {
+        CsvValue cv = new CsvValue();
+        if (value == null) {
+            cv.type = String.valueOf(DataType.NULL.toInt());
+            cv.typeName = DataType.NULL.toString();
+            return cv;
+        }
+        DataType type = value.getDataType();
+        if (type == null) type = DataType.NULL;
+        cv.type = String.valueOf(type.toInt());
+        cv.typeName = type.toString();
+        cv.alias = value.getAlias() == null ? "" : value.getAlias();
+        Object raw = value.getValue();
+        if (raw instanceof AttachmentValue) {
+            AttachmentValue attachment = (AttachmentValue) raw;
+            cv.encoding = "attachment-base64";
+            cv.fileName = attachment.getName() == null ? "" : attachment.getName();
+            byte[] content = attachment.getContent();
+            cv.value = java.util.Base64.getEncoder().encodeToString(content == null ? new byte[0] : content);
+        } else if (raw instanceof byte[]) {
+            cv.encoding = "base64";
+            cv.value = java.util.Base64.getEncoder().encodeToString((byte[]) raw);
+        } else {
+            cv.encoding = "string";
+            cv.value = raw == null ? "" : String.valueOf(raw);
+        }
+        return cv;
+    }
+
+    private List<Entry> deserializeEntriesCsv(String base64) throws Exception {
+        byte[] bytes = decompressFromBase64(base64);
+        String text = new String(bytes, "UTF-8");
+        List<String[]> rows = parseCsv(text);
+        List<Entry> entries = new ArrayList<Entry>();
+        Map<String, Entry> byId = new LinkedHashMap<String, Entry>();
+        for (int i = 0; i < rows.size(); i++) {
+            String[] row = rows.get(i);
+            if (i == 0 && row.length > 1 && "entryId".equalsIgnoreCase(row[0])) continue;
+            String entryId = col(row, 0);
+            if (entryId.length() == 0 && row.length < 2) continue;
+            Entry entry = byId.get(entryId);
+            if (entry == null) {
+                entry = new Entry();
+                if (entryId.length() > 0) entry.setEntryId(entryId);
+                byId.put(entryId, entry);
+                entries.add(entry);
+            }
+            int fieldId = parseInt(col(row, 1), -1);
+            if (fieldId <= 0) continue;
+            entry.put(Integer.valueOf(fieldId), readCsvValue(row));
+        }
+        return entries;
+    }
+
+    private Value readCsvValue(String[] row) {
+        int typeNumber = parseInt(col(row, 2), DataType.CHAR.toInt());
+        DataType type = DataType.toDataType(typeNumber);
+        String alias = col(row, 4);
+        String encoding = col(row, 5);
+        String fileName = col(row, 6);
+        String value = col(row, 7);
+        ElementBackedValue ebv = new ElementBackedValue(type, alias, encoding, fileName, value);
+        return readValue(ebv.toElement());
+    }
+
+    private String col(String[] row, int index) {
+        return row == null || index < 0 || index >= row.length || row[index] == null ? "" : row[index];
+    }
+
+    private String csv(String value) {
+        String v = value == null ? "" : value;
+        return "\"" + v.replace("\"", "\"\"") + "\"";
+    }
+
+    private List<String[]> parseCsv(String text) {
+        List<String[]> rows = new ArrayList<String[]>();
+        List<String> current = new ArrayList<String>();
+        StringBuilder cell = new StringBuilder();
+        boolean quoted = false;
+        String src = text == null ? "" : text;
+        for (int i = 0; i < src.length(); i++) {
+            char ch = src.charAt(i);
+            if (quoted) {
+                if (ch == '"') {
+                    if (i + 1 < src.length() && src.charAt(i + 1) == '"') {
+                        cell.append('"');
+                        i++;
+                    } else {
+                        quoted = false;
+                    }
+                } else {
+                    cell.append(ch);
+                }
+            } else {
+                if (ch == '"') {
+                    quoted = true;
+                } else if (ch == ',') {
+                    current.add(cell.toString());
+                    cell.setLength(0);
+                } else if (ch == '\n') {
+                    current.add(cell.toString());
+                    rows.add(current.toArray(new String[current.size()]));
+                    current = new ArrayList<String>();
+                    cell.setLength(0);
+                } else if (ch != '\r') {
+                    cell.append(ch);
+                }
+            }
+        }
+        if (cell.length() > 0 || !current.isEmpty()) {
+            current.add(cell.toString());
+            rows.add(current.toArray(new String[current.size()]));
+        }
+        return rows;
     }
 
     private List<Entry> deserializeEntriesJava(String base64) throws Exception {
@@ -716,6 +908,45 @@ public final class MigrationPackPayloadService {
         BmcDataMigrator.AttachmentPolicy attachmentPolicy = BmcDataMigrator.AttachmentPolicy.SKIP_ATTACHMENTS;
         final List<Integer> writableFieldIds = new ArrayList<Integer>();
         final List<Integer> attachmentFieldIds = new ArrayList<Integer>();
+    }
+
+    private static final class CsvValue {
+        String type = "";
+        String typeName = "";
+        String alias = "";
+        String encoding = "string";
+        String fileName = "";
+        String value = "";
+    }
+
+    private final class ElementBackedValue {
+        private final DataType type;
+        private final String alias;
+        private final String encoding;
+        private final String fileName;
+        private final String value;
+        ElementBackedValue(DataType type, String alias, String encoding, String fileName, String value) {
+            this.type = type == null ? DataType.CHAR : type;
+            this.alias = alias == null ? "" : alias;
+            this.encoding = encoding == null ? "" : encoding;
+            this.fileName = fileName == null ? "" : fileName;
+            this.value = value == null ? "" : value;
+        }
+        Element toElement() {
+            try {
+                Document doc = secureFactory().newDocumentBuilder().newDocument();
+                Element e = doc.createElement("field");
+                e.setAttribute("type", String.valueOf(type.toInt()));
+                e.setAttribute("typeName", type.toString());
+                e.setAttribute("alias", alias);
+                e.setAttribute("encoding", encoding);
+                e.setAttribute("fileName", fileName);
+                e.setTextContent(value);
+                return e;
+            } catch (Throwable ex) {
+                throw new RuntimeException(ex);
+            }
+        }
     }
 
     public static final class EmbeddedDataResult {

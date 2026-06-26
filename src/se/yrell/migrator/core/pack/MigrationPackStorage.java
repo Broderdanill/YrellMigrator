@@ -29,14 +29,15 @@ import org.w3c.dom.NodeList;
 import se.yrell.migrator.bmc.BmcDataMigrator;
 import se.yrell.migrator.core.MigrationDirection;
 
-/** Import/export for portable .ympack files. Legacy .hlxpack files still load. */
+/** Import/export for portable ZIP based Yrell Migrator packages. Legacy .ympack/.hlxpack files still load. */
 public final class MigrationPackStorage {
-    public static final String FILE_EXTENSION = "*.ympack";
-    public static final String LEGACY_FILE_EXTENSION = "*.hlxpack";
+    public static final String FILE_EXTENSION = "*.zip";
+    public static final String LEGACY_FILE_EXTENSION = "*.ympack;*.hlxpack";
     private static final String MANIFEST = "manifest.xml";
     private static final String PREVIEW = "preview.txt";
     private static final String README = "README.txt";
     private static final String CHECKSUMS = "checksums.sha256";
+    private final MigrationPackPayloadService payloadService = new MigrationPackPayloadService();
 
     public void save(MigrationPack pack, File file) throws Exception {
         if (pack == null) throw new IllegalArgumentException("No migration pack supplied.");
@@ -61,8 +62,8 @@ public final class MigrationPackStorage {
         List<PayloadFile> payloads = new ArrayList<PayloadFile>();
         Document doc = newDocument();
         Element root = doc.createElement("yrellMigrationPack");
-        root.setAttribute("version", "3");
-        root.setAttribute("format", "zip");
+        root.setAttribute("version", "4");
+        root.setAttribute("format", "open-zip");
         root.setAttribute("name", pack.getName());
         root.setAttribute("createdAt", String.valueOf(pack.getCreatedAtMillis()));
         root.setAttribute("modifiedAt", String.valueOf(System.currentTimeMillis()));
@@ -76,13 +77,17 @@ public final class MigrationPackStorage {
             index++;
             Element e = itemElement(doc, item);
             if (item.getPayloadBase64() != null && item.getPayloadBase64().length() > 0) {
-                byte[] payloadBytes = java.util.Base64.getDecoder().decode(item.getPayloadBase64());
-                String ref = "payloads/item-" + zero(index) + ".bin";
+                byte[] payloadBytes = payloadService.toOpenPayloadBytes(item);
+                String folder = payloadService.openPayloadExtension(item).equals(".def") ? "definitions" : "data";
+                String ref = folder + "/item-" + zero(index) + "-" + safeFileToken(item.isFormData() ? item.getFormName() : item.getObjectName())
+                        + payloadService.openPayloadExtension(item);
                 String sha = sha256(payloadBytes);
                 payloads.add(new PayloadFile(ref, payloadBytes, sha));
                 e.setAttribute("payloadRef", ref);
                 e.setAttribute("payloadSha256", sha);
                 e.setAttribute("payloadSize", String.valueOf(payloadBytes.length));
+                e.setAttribute("payloadCodec", "rawFile");
+                e.setAttribute("payloadType", payloadService.openPayloadType(item));
             }
             root.appendChild(e);
         }
@@ -175,7 +180,12 @@ public final class MigrationPackStorage {
                         throw new IllegalArgumentException("Payload checksum mismatch for " + payloadRef + ".");
                     }
                 }
-                item.setPayloadBase64(java.util.Base64.getEncoder().encodeToString(payloadBytes));
+                String codec = e.getAttribute("payloadCodec");
+                if ("rawFile".equals(codec)) {
+                    item.setPayloadBase64(gzipToBase64(payloadBytes));
+                } else {
+                    item.setPayloadBase64(java.util.Base64.getEncoder().encodeToString(payloadBytes));
+                }
             } else {
                 NodeList payloads = e.getElementsByTagName("payload");
                 if (payloads != null && payloads.getLength() > 0) {
@@ -304,6 +314,22 @@ public final class MigrationPackStorage {
         } catch (Throwable ignored) {
         }
         return factory;
+    }
+
+    private String safeFileToken(String text) {
+        String value = text == null ? "item" : text.trim();
+        if (value.length() == 0) value = "item";
+        value = value.replaceAll("[^A-Za-z0-9._-]+", "_");
+        if (value.length() > 80) value = value.substring(0, 80);
+        return value;
+    }
+
+    private String gzipToBase64(byte[] bytes) throws Exception {
+        ByteArrayOutputStream raw = new ByteArrayOutputStream();
+        java.util.zip.GZIPOutputStream gzip = new java.util.zip.GZIPOutputStream(raw);
+        gzip.write(bytes == null ? new byte[0] : bytes);
+        gzip.close();
+        return java.util.Base64.getEncoder().encodeToString(raw.toByteArray());
     }
 
     private String zero(int index) {
